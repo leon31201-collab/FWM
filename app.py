@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from urllib.parse import urlparse, parse_qs
 from streamlit_gsheets import GSheetsConnection
+import requests
+import base64
+from io import BytesIO
 
 try:
     import cv2
@@ -43,12 +46,14 @@ def get_hydrant(h_id):
         return treffer.iloc[0]
     return None
 
-def update_hydrant(h_id, neuer_status, neue_bemerkung):
+def update_hydrant(h_id, neuer_status, neue_bemerkung, neue_bild_url=""):
     # Die Zeile mit der passenden ID finden
     idx = df.index[df['id'].astype(str) == str(h_id)].tolist()
     if idx:
         df.at[idx[0], 'status'] = neuer_status
         df.at[idx[0], 'bemerkung'] = neue_bemerkung
+        if 'bild_url' in df.columns:
+            df.at[idx[0], 'bild_url'] = neue_bild_url
         # Das komplette, aktualisierte Datenpaket zurück in Google Sheets schreiben
         if conn is not None:
             SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
@@ -83,6 +88,19 @@ def decode_qr_code(image_bytes):
         pass
     return None
 
+
+def upload_image_to_imgbb(image_bytes):
+    """Lädt ein Bild zu ImgBB hoch und gibt den Link zurück (kostenlos, kein API Key nötig)"""
+    try:
+        files = {'image': image_bytes}
+        response = requests.post('https://imgbb.com/api/upload?key=4a34aef16e0fa7c02a6c38a9949c2230', files=files, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('success'):
+                return data['data']['url']
+    except Exception as e:
+        st.warning(f"Bild-Upload fehlgeschlagen: {str(e)}")
+    return None
 # --- 3. STREAMLIT APP LOGIK ---
 st.set_page_config(page_title="Hydranten-Verwaltung", page_icon="🚒")
 st.title("🚒 Feuerwehr Hydranten-Verwaltung")
@@ -100,6 +118,36 @@ if hydrant_id_aus_url:
     if hydrant_daten is not None:
         st.write(f"**Standort:** {hydrant_daten['ort']}")
         
+        # Bild anzeigen, wenn vorhanden
+        if 'bild_url' in hydrant_daten.index:
+            bild_url = hydrant_daten['bild_url']
+            if pd.notna(bild_url) and bild_url.strip():
+                st.image(bild_url, width=300)
+        
+        # Bild hochladen
+        st.markdown("### 📸 Bild hochladen/fotografieren")
+        col_cam, col_file = st.columns(2)
+        
+        new_bild_url = None
+        
+        with col_cam:
+            camera_pic = st.camera_input("Foto mit Kamera machen")
+            if camera_pic is not None:
+                st.info("📤 Bild wird hochgeladen...")
+                new_bild_url = upload_image_to_imgbb(camera_pic.getvalue())
+                if new_bild_url:
+                    st.success("✅ Bild hochgeladen!")
+                    st.image(new_bild_url, width=200)
+        
+        with col_file:
+            uploaded_pic = st.file_uploader("Oder Datei hochladen", type=["png", "jpg", "jpeg"])
+            if uploaded_pic is not None:
+                st.info("📤 Bild wird hochgeladen...")
+                new_bild_url = upload_image_to_imgbb(uploaded_pic.getvalue())
+                if new_bild_url:
+                    st.success("✅ Bild hochgeladen!")
+                    st.image(new_bild_url, width=200)
+        
         with st.form("edit_form"):
             status_liste = ["Einsatzbereit", "Defekt", "Eingeschränkt", "Prüfung fällig"]
             aktueller_status = str(hydrant_daten['status'])
@@ -115,10 +163,17 @@ if hydrant_id_aus_url:
                 aktuelle_bemerkung = ""
                 
             neu_bemerkung = st.text_area("Bemerkung", value=str(aktuelle_bemerkung))
+            
+            # Bild-URL eingeben
+            aktuelle_bild_url = hydrant_daten.get('bild_url', '')
+            if pd.isna(aktuelle_bild_url):
+                aktuelle_bild_url = ""
+            neu_bild_url = st.text_input("Bild-URL", value=str(aktuelle_bild_url), help="Link zu einem Bild des Hydranten")
+            
             submit = st.form_submit_button("Änderungen speichern")
             
             if submit:
-                update_hydrant(hydrant_id_aus_url, neu_status, neu_bemerkung)
+                update_hydrant(hydrant_id_aus_url, neu_status, neu_bemerkung, neu_bild_url)
                 st.success("✅ Daten wurden erfolgreich in Google Sheets gespeichert!")
                 # App neu laden, um Änderungen sofort zu zeigen
                 st.rerun() 
