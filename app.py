@@ -51,7 +51,8 @@ def update_hydrant(h_id, neuer_status, neue_bemerkung):
         df.at[idx[0], 'bemerkung'] = neue_bemerkung
         # Das komplette, aktualisierte Datenpaket zurück in Google Sheets schreiben
         if conn is not None:
-            conn.update(data=df)
+            SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
+            conn.update(spreadsheet=SHEET_URL, data=df)
         else:
             st.info("ℹ️ Demo-Modus: Änderungen werden nicht gespeichert. Verbinde Google Sheets für Persistenz.")
 
@@ -177,7 +178,8 @@ else:
         if not edited_df.equals(df):
             st.info("💾 Änderungen speichern...")
             if conn is not None:
-                conn.update(data=edited_df)
+                SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
+                conn.update(spreadsheet=SHEET_URL, data=edited_df)
                 st.success("✅ Änderungen in Google Sheets gespeichert!")
             else:
                 st.warning("⚠️ Demo-Modus: Änderungen werden nicht gespeichert.")
