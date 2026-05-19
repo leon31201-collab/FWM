@@ -1,18 +1,39 @@
 import streamlit as st
 import pandas as pd
+from urllib.parse import urlparse, parse_qs
 from streamlit_gsheets import GSheetsConnection
+
+try:
+    import cv2
+    import numpy as np
+    QR_SUPPORTED = True
+except ImportError:
+    cv2 = None
+    np = None
+    QR_SUPPORTED = False
 
 # --- 1. DATENBANK SETUP (Google Sheets) ---
 # Verbindung zu Google Sheets herstellen
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# Daten laden. ttl=0 (Time-To-Live) sorgt dafür, dass die App bei 
-# jedem Laden die frischen Daten zieht und nicht aus dem Zwischenspeicher.
 try:
-    df = conn.read(ttl=0)
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    # Sheet URL (nicht ID!)
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
+    df = conn.read(spreadsheet=SHEET_URL, ttl=0)
 except Exception as e:
-    st.error("Fehler beim Verbinden mit dem Google Sheet. Sind die Secrets korrekt?")
-    st.stop()
+    st.error(f"❌ Fehler beim Lesen des Sheets:")
+    st.error(f"Typ: {type(e).__name__}")
+    st.error(f"Message: {str(e)}")
+    import traceback
+    st.error(traceback.format_exc())
+    st.info("Verwende Demo-Daten...")
+    # Demo-Daten für Tests ohne Google Sheets
+    df = pd.DataFrame({
+        'id': [1, 2, 3],
+        'ort': ['Hauptstraße 10', 'Bahnhofstraße 5', 'Marktplatz 3'],
+        'status': ['Einsatzbereit', 'Defekt', 'Eingeschränkt'],
+        'bemerkung': ['OK', 'Wartung nötig', 'Prüfung geplant']
+    })
+    conn = None
 
 # --- 2. HILFSFUNKTIONEN ---
 def get_hydrant(h_id):
@@ -29,7 +50,37 @@ def update_hydrant(h_id, neuer_status, neue_bemerkung):
         df.at[idx[0], 'status'] = neuer_status
         df.at[idx[0], 'bemerkung'] = neue_bemerkung
         # Das komplette, aktualisierte Datenpaket zurück in Google Sheets schreiben
-        conn.update(data=df)
+        if conn is not None:
+            conn.update(data=df)
+        else:
+            st.info("ℹ️ Demo-Modus: Änderungen werden nicht gespeichert. Verbinde Google Sheets für Persistenz.")
+
+
+def parse_qr_payload(payload):
+    try:
+        parsed = urlparse(payload)
+        if parsed.scheme and parsed.netloc:
+            qs = parse_qs(parsed.query)
+            if 'id' in qs:
+                return qs['id'][0]
+    except Exception:
+        pass
+    return payload
+
+
+def decode_qr_code(image_bytes):
+    if not QR_SUPPORTED:
+        return None
+    try:
+        arr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        detector = cv2.QRCodeDetector()
+        data, points, _ = detector.detectAndDecode(img)
+        if data:
+            return data
+    except Exception:
+        pass
+    return None
 
 # --- 3. STREAMLIT APP LOGIK ---
 st.set_page_config(page_title="Hydranten-Verwaltung", page_icon="🚒")
@@ -81,6 +132,42 @@ else:
     # --- MODUS 2: ÜBERSICHT ALLER HYDRANTEN ---
     st.subheader("Alle Hydranten in der Übersicht")
     
+    # QR-Code Reader hinzufügen
+    st.markdown("### QR-Code Reader")
+    if not QR_SUPPORTED:
+        st.warning("QR-Code-Decoder wird nicht unterstützt. Installiere `opencv-python` und starte die App neu.")
+    st.info("Nutze die Kamera oder lade ein Bild des QR-Codes hoch.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📷 Kamera**")
+        camera_image = st.camera_input("QR-Code fotografieren")
+        if camera_image is not None:
+            qr_text = decode_qr_code(camera_image.getvalue())
+            if qr_text:
+                hydrant_id = parse_qr_payload(qr_text)
+                st.success(f"QR-Code erkannt: `{qr_text}`")
+                if st.button("Hydranten-Datensatz öffnen", key="camera_button"):
+                    st.experimental_set_query_params(id=hydrant_id)
+                    st.experimental_rerun()
+            else:
+                st.error("Kein QR-Code erkannt. Bitte erneut fotografieren.")
+    
+    with col2:
+        st.markdown("**📁 Datei-Upload**")
+        uploaded_file = st.file_uploader("QR-Code Bild hochladen", type=["png", "jpg", "jpeg"])
+        if uploaded_file is not None:
+            qr_text = decode_qr_code(uploaded_file.getvalue())
+            if qr_text:
+                hydrant_id = parse_qr_payload(qr_text)
+                st.success(f"QR-Code erkannt: `{qr_text}`")
+                if st.button("Hydranten-Datensatz öffnen", key="upload_button"):
+                    st.experimental_set_query_params(id=hydrant_id)
+                    st.experimental_rerun()
+            else:
+                st.error("Kein QR-Code erkannt. Bitte ein anderes Bild hochladen.")
+
     # Tabelle anzeigen (ID-Spalte ohne Kommazahlen darstellen)
     if not df.empty:
         anzeige_df = df.copy()
