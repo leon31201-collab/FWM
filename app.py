@@ -168,11 +168,19 @@ else:
             else:
                 st.error("Kein QR-Code erkannt. Bitte ein anderes Bild hochladen.")
 
-    # Tabelle anzeigen (ID-Spalte ohne Kommazahlen darstellen)
+    # Tabelle anzeigen & bearbeiten
     if not df.empty:
-        anzeige_df = df.copy()
-        anzeige_df['id'] = anzeige_df['id'].astype(str)
-        st.dataframe(anzeige_df, use_container_width=True, hide_index=True)
+        st.markdown("### 📊 Hydranten-Tabelle")
+        edited_df = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic")
+        
+        # Änderungen speichern
+        if not edited_df.equals(df):
+            st.info("💾 Änderungen speichern...")
+            if conn is not None:
+                conn.update(data=edited_df)
+                st.success("✅ Änderungen in Google Sheets gespeichert!")
+            else:
+                st.warning("⚠️ Demo-Modus: Änderungen werden nicht gespeichert.")
     else:
         st.info("Die Tabelle ist noch leer. Trage Hydranten ins Google Sheet ein!")
     
