@@ -90,26 +90,13 @@ def decode_qr_code(image_bytes):
 
 
 def upload_image_to_imgbb(image_bytes):
-    """Lädt ein Bild zu ImgBB hoch und gibt den Link zurück"""
+    """Konvertiert Bild zu Base64 Data URL"""
     try:
-        files = {'image': image_bytes}
-        response = requests.post('https://imgbb.com/api/upload?key=4a34aef16e0fa7c02a6c38a9949c2230', files=files, timeout=10)
-
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                if data.get('success'):
-                    return data['data']['url']
-                else:
-                    error_msg = data.get('error', {}).get('message', 'Unbekannter Fehler')
-                    st.error(f"ImgBB Error: {error_msg}")
-            except Exception as json_e:
-                st.error(f"JSON Parse Fehler: {str(json_e)}")
-                st.error(f"Response: {response.text[:200]}")
-        else:
-            st.error(f"HTTP {response.status_code}: {response.text[:200]}")
+        base64_image = base64.b64encode(image_bytes).decode()
+        data_url = f"data:image/jpeg;base64,{base64_image}"
+        return data_url
     except Exception as e:
-        st.error(f"Upload Fehler: {type(e).__name__}: {str(e)}")
+        st.error(f"Fehler: {str(e)}")
     return None
 # --- 3. STREAMLIT APP LOGIK ---
 st.set_page_config(page_title="Hydranten-Verwaltung", page_icon="🚒")
