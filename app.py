@@ -111,73 +111,31 @@ hydrant_id_aus_url = query_params.get("id")
 
 if hydrant_id_aus_url:
     # --- MODUS 1: EINZELANSICHT (via QR-Code) ---
-    st.subheader(f"Hydrant {hydrant_id_aus_url} bearbeiten")
-    
+    st.subheader(f"Hydrant {hydrant_id_aus_url}")
+
     hydrant_daten = get_hydrant(hydrant_id_aus_url)
-    
+
     if hydrant_daten is not None:
         st.write(f"**Standort:** {hydrant_daten['ort']}")
-        
+
         # Bild anzeigen, wenn vorhanden
         if 'bild_url' in hydrant_daten.index:
             bild_url = hydrant_daten['bild_url']
             if pd.notna(bild_url) and bild_url.strip():
                 st.image(bild_url, width=300)
-        
-        # Bild hochladen
-        st.markdown("### 📸 Bild hochladen/fotografieren")
-        col_cam, col_file = st.columns(2)
-        
-        new_bild_url = None
-        
-        with col_cam:
-            camera_pic = st.camera_input("Foto mit Kamera machen")
-            if camera_pic is not None:
-                st.info("📤 Bild wird hochgeladen...")
-                new_bild_url = upload_image_to_imgbb(camera_pic.getvalue())
-                if new_bild_url:
-                    st.success("✅ Bild hochgeladen!")
-                    st.image(new_bild_url, width=200)
-        
-        with col_file:
-            uploaded_pic = st.file_uploader("Oder Datei hochladen", type=["png", "jpg", "jpeg"])
-            if uploaded_pic is not None:
-                st.info("📤 Bild wird hochgeladen...")
-                new_bild_url = upload_image_to_imgbb(uploaded_pic.getvalue())
-                if new_bild_url:
-                    st.success("✅ Bild hochgeladen!")
-                    st.image(new_bild_url, width=200)
-        
-        with st.form("edit_form"):
-            status_liste = ["Einsatzbereit", "Defekt", "Eingeschränkt", "Prüfung fällig"]
-            aktueller_status = str(hydrant_daten['status'])
-            
-            if aktueller_status not in status_liste:
-                aktueller_status = "Einsatzbereit"
-                
-            neu_status = st.selectbox("Status", status_liste, index=status_liste.index(aktueller_status))
-            
-            # Leere Felder (NaN) aus Google Sheets abfangen
-            aktuelle_bemerkung = hydrant_daten['bemerkung']
-            if pd.isna(aktuelle_bemerkung):
-                aktuelle_bemerkung = ""
-                
-            neu_bemerkung = st.text_area("Bemerkung", value=str(aktuelle_bemerkung))
-            
-            # Bild-URL eingeben
-            aktuelle_bild_url = hydrant_daten.get('bild_url', '')
-            if pd.isna(aktuelle_bild_url):
-                aktuelle_bild_url = ""
-            neu_bild_url = st.text_input("Bild-URL", value=str(aktuelle_bild_url), help="Link zu einem Bild des Hydranten")
-            
-            submit = st.form_submit_button("Änderungen speichern")
-            
-            if submit:
-                update_hydrant(hydrant_id_aus_url, neu_status, neu_bemerkung, neu_bild_url)
-                st.success("✅ Daten wurden erfolgreich in Google Sheets gespeichert!")
-                # App neu laden, um Änderungen sofort zu zeigen
-                st.rerun() 
-                
+
+        # Nur Kamera-Input für Foto
+        st.markdown("### 📸 Foto hochladen")
+        camera_pic = st.camera_input("Mit Kamera fotografieren")
+        if camera_pic is not None:
+            st.info("📤 Bild wird hochgeladen...")
+            new_bild_url = upload_image_to_imgbb(camera_pic.getvalue())
+            if new_bild_url:
+                st.success("✅ Bild hochgeladen!")
+                st.image(new_bild_url, width=200)
+                update_hydrant(hydrant_id_aus_url, str(hydrant_daten['status']), str(hydrant_daten.get('bemerkung', '')), new_bild_url)
+                st.rerun()
+
         if st.button("Zurück zur Übersicht"):
             st.query_params.clear()
             st.rerun()
@@ -185,60 +143,23 @@ if hydrant_id_aus_url:
         st.error(f"Hydrant mit der ID {hydrant_id_aus_url} wurde in der Tabelle nicht gefunden.")
 
 else:
-    # --- MODUS 2: ÜBERSICHT ALLER HYDRANTEN ---
-    st.subheader("Alle Hydranten in der Übersicht")
-    
-    # QR-Code Reader hinzufügen
-    st.markdown("### QR-Code Reader")
+    # --- MODUS 2: QR-CODE SCANNER ---
+    st.subheader("QR-Code scannen")
+    st.info("Fotografiere einen Hydranten-QR-Code mit der Kamera")
+
     if not QR_SUPPORTED:
         st.warning("QR-Code-Decoder wird nicht unterstützt. Installiere `opencv-python` und starte die App neu.")
-    st.info("Nutze die Kamera oder lade ein Bild des QR-Codes hoch.")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**📷 Kamera**")
-        camera_image = st.camera_input("QR-Code fotografieren")
-        if camera_image is not None:
-            qr_text = decode_qr_code(camera_image.getvalue())
-            if qr_text:
-                hydrant_id = parse_qr_payload(qr_text)
-                st.success(f"QR-Code erkannt: `{qr_text}`")
-                if st.button("Hydranten-Datensatz öffnen", key="camera_button"):
-                    st.experimental_set_query_params(id=hydrant_id)
-                    st.experimental_rerun()
-            else:
-                st.error("Kein QR-Code erkannt. Bitte erneut fotografieren.")
-    
-    with col2:
-        st.markdown("**📁 Datei-Upload**")
-        uploaded_file = st.file_uploader("QR-Code Bild hochladen", type=["png", "jpg", "jpeg"])
-        if uploaded_file is not None:
-            qr_text = decode_qr_code(uploaded_file.getvalue())
-            if qr_text:
-                hydrant_id = parse_qr_payload(qr_text)
-                st.success(f"QR-Code erkannt: `{qr_text}`")
-                if st.button("Hydranten-Datensatz öffnen", key="upload_button"):
-                    st.experimental_set_query_params(id=hydrant_id)
-                    st.experimental_rerun()
-            else:
-                st.error("Kein QR-Code erkannt. Bitte ein anderes Bild hochladen.")
 
-    # Tabelle anzeigen & bearbeiten
-    if not df.empty:
-        st.markdown("### 📊 Hydranten-Tabelle")
-        edited_df = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic")
-        
-        # Änderungen speichern
-        if not edited_df.equals(df):
-            st.info("💾 Änderungen speichern...")
-            if conn is not None:
-                SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
-                conn.update(spreadsheet=SHEET_URL, data=edited_df)
-                st.success("✅ Änderungen in Google Sheets gespeichert!")
-            else:
-                st.warning("⚠️ Demo-Modus: Änderungen werden nicht gespeichert.")
-    else:
-        st.info("Die Tabelle ist noch leer. Trage Hydranten ins Google Sheet ein!")
-    
-    st.info("💡 Tipp: Scanne einen Hydranten-QR-Code oder hänge `/?id=1` an die URL an.")
+    camera_image = st.camera_input("QR-Code fotografieren")
+    if camera_image is not None:
+        qr_text = decode_qr_code(camera_image.getvalue())
+        if qr_text:
+            hydrant_id = parse_qr_payload(qr_text)
+            st.success(f"✅ QR-Code erkannt!")
+            st.query_params["id"] = hydrant_id
+            st.rerun()
+        else:
+            st.error("❌ Kein QR-Code erkannt. Bitte erneut fotografieren.")
+
+    st.markdown("---")
+    st.markdown("**💡 Workflow:** Scanne QR-Code → Fotografiere Hydrant → Speichern")
