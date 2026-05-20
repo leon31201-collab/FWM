@@ -167,7 +167,7 @@ else:
 
     with col2:
         st.markdown("### 📝 Oder ID eingeben")
-        hydrant_id_input = st.text_input("Hydranten-ID", placeholder="z.B. 1, 2, 3...")
+        hydrant_id_input = st.text_input("Hydranten-ID", placeholder="z.B. FWM_HYD_xx")
         if st.button("Öffnen"):
             if hydrant_id_input:
                 st.query_params["id"] = hydrant_id_input
