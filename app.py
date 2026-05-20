@@ -143,23 +143,52 @@ if hydrant_id_aus_url:
         st.error(f"Hydrant mit der ID {hydrant_id_aus_url} wurde in der Tabelle nicht gefunden.")
 
 else:
-    # --- MODUS 2: QR-CODE SCANNER ---
-    st.subheader("QR-Code scannen")
-    st.info("Fotografiere einen Hydranten-QR-Code mit der Kamera")
+    # --- MODUS 2: ÜBERSICHT & QR-CODE SCANNER ---
+    st.subheader("Hydranten-Verwaltung")
 
-    if not QR_SUPPORTED:
-        st.warning("QR-Code-Decoder wird nicht unterstützt. Installiere `opencv-python` und starte die App neu.")
+    # QR-Code Scanner oder ID eingeben
+    col1, col2 = st.columns(2)
 
-    camera_image = st.camera_input("QR-Code fotografieren")
-    if camera_image is not None:
-        qr_text = decode_qr_code(camera_image.getvalue())
-        if qr_text:
-            hydrant_id = parse_qr_payload(qr_text)
-            st.success(f"✅ QR-Code erkannt!")
-            st.query_params["id"] = hydrant_id
-            st.rerun()
-        else:
-            st.error("❌ Kein QR-Code erkannt. Bitte erneut fotografieren.")
+    with col1:
+        st.markdown("### 📷 QR-Code scannen")
+        if not QR_SUPPORTED:
+            st.warning("QR-Code-Decoder wird nicht unterstützt. Installiere `opencv-python` und starte die App neu.")
 
+        camera_image = st.camera_input("QR-Code fotografieren")
+        if camera_image is not None:
+            qr_text = decode_qr_code(camera_image.getvalue())
+            if qr_text:
+                hydrant_id = parse_qr_payload(qr_text)
+                st.success(f"✅ QR-Code erkannt!")
+                st.query_params["id"] = hydrant_id
+                st.rerun()
+            else:
+                st.error("❌ Kein QR-Code erkannt. Bitte erneut fotografieren.")
+
+    with col2:
+        st.markdown("### 📝 Oder ID eingeben")
+        hydrant_id_input = st.text_input("Hydranten-ID", placeholder="z.B. 1, 2, 3...")
+        if st.button("Öffnen"):
+            if hydrant_id_input:
+                st.query_params["id"] = hydrant_id_input
+                st.rerun()
+            else:
+                st.error("Bitte eine ID eingeben.")
+
+    # Tabelle anzeigen & bearbeiten
     st.markdown("---")
-    st.markdown("**💡 Workflow:** Scanne QR-Code → Fotografiere Hydrant → Speichern")
+    if not df.empty:
+        st.markdown("### 📊 Hydranten-Tabelle")
+        edited_df = st.data_editor(df, use_container_width=True, hide_index=True, num_rows="dynamic")
+
+        # Änderungen speichern
+        if not edited_df.equals(df):
+            st.info("💾 Änderungen speichern...")
+            if conn is not None:
+                SHEET_URL = "https://docs.google.com/spreadsheets/d/1JIzjxSkveLcraKzZYSWaQu77AfMGk0ghxT4yuEXZo7I/edit"
+                conn.update(spreadsheet=SHEET_URL, data=edited_df)
+                st.success("✅ Änderungen in Google Sheets gespeichert!")
+            else:
+                st.warning("⚠️ Demo-Modus: Änderungen werden nicht gespeichert.")
+    else:
+        st.info("Die Tabelle ist noch leer. Trage Hydranten ins Google Sheet ein!")
